@@ -4,7 +4,21 @@
   <arg name="debug" default="false" />
   <let name="launch_prefix" value="xterm -e gdb --args" if="$(var debug)" />
 
-  <!-- VESC to Odom node -->
+  <!-- ===== Bicycle-model + IMU conversion / fusion parameters ===== -->
+  <arg name="imu_topic" default="sensors/imu/raw" />
+  <arg name="use_imu_yaw_rate" default="true" />
+  <arg name="use_imu_orientation" default="false" />
+  <!-- Process noise (Q): increase -> trust the motion model less -->
+  <arg name="Q_x" default="0.01" />
+  <arg name="Q_y" default="0.01" />
+  <arg name="Q_theta" default="0.02" />
+  <arg name="Q_v" default="0.05" />
+  <arg name="Q_omega" default="0.05" />
+  <!-- Measurement noise (R): increase -> trust the IMU less -->
+  <arg name="R_omega" default="0.02" />
+  <arg name="R_theta" default="0.05" />
+
+  <!-- VESC to Odom node (IMU + VESC Kalman-filter fusion) -->
   <node pkg="vesc_ackermann" exec="vesc_to_odom_node" name="vesc_to_odom_node" output="screen">
     <param name="odom_frame" value="odom" />
     <param name="base_frame" value="base_link" />
@@ -15,5 +29,32 @@
     <param name="steering_angle_to_servo_offset" value="0.0" />
     <param name="wheelbase" value="0.2" />
     <param name="publish_tf" value="true" />
+    <!-- IMU fusion -->
+    <param name="imu_topic" value="$(var imu_topic)" />
+    <param name="use_imu_yaw_rate" value="$(var use_imu_yaw_rate)" />
+    <param name="use_imu_orientation" value="$(var use_imu_orientation)" />
+    <param name="Q_x" value="$(var Q_x)" />
+    <param name="Q_y" value="$(var Q_y)" />
+    <param name="Q_theta" value="$(var Q_theta)" />
+    <param name="Q_v" value="$(var Q_v)" />
+    <param name="Q_omega" value="$(var Q_omega)" />
+    <param name="R_omega" value="$(var R_omega)" />
+    <param name="R_theta" value="$(var R_theta)" />
   </node>
+
+  <!-- ===== FALLBACK: original bicycle-model-only odometry node =====
+       Uncomment this (and comment out the fused node above) to revert to the
+       pre-fusion behaviour. It needs no IMU topic and ignores the Q/R params.
+  <node pkg="vesc_ackermann" exec="vesc_to_odom_node_backup" name="vesc_to_odom_node" output="screen">
+    <param name="odom_frame" value="odom" />
+    <param name="base_frame" value="base_link" />
+    <param name="speed_to_erpm_gain" value="1.0" />
+    <param name="speed_to_erpm_offset" value="0.0" />
+    <param name="use_servo_cmd_to_calc_angular_velocity" value="true" />
+    <param name="steering_angle_to_servo_gain" value="1.0" />
+    <param name="steering_angle_to_servo_offset" value="0.0" />
+    <param name="wheelbase" value="0.2" />
+    <param name="publish_tf" value="true" />
+  </node>
+  -->
 </launch>

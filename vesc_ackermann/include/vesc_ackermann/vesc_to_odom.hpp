@@ -33,11 +33,13 @@
 
 #include <tf2_ros/transform_broadcaster.h>
 
+#include <array>
 #include <memory>
 #include <string>
 
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <vesc_msgs/msg/vesc_state_stamped.hpp>
 
@@ -45,8 +47,51 @@ namespace vesc_ackermann
 {
 
 using nav_msgs::msg::Odometry;
+using sensor_msgs::msg::Imu;
 using std_msgs::msg::Float64;
 using vesc_msgs::msg::VescStateStamped;
+
+// ---------------------------------------------------------------------------
+// Self-contained 5-state linear Kalman Filter for odometry fusion.
+//
+//   State vector  x = [ x, y, theta, v, omega ]^T   (size N = 5)
+//     x, y    : position in the odom frame                       [m]
+//     theta   : yaw angle                                        [rad]
+//     v       : longitudinal speed                               [m/s]
+//     omega   : yaw rate                                         [rad/s]
+//
+// The matrix math is implemented explicitly with plain std::array storage so
+// the node has no external linear-algebra dependency. Because the measurement
+// noise R is diagonal and the IMU measurements (yaw rate, yaw) are mutually
+// independent, the correction is applied as a sequence of *scalar* Kalman
+// updates. Each scalar update is exact and needs no matrix inversion.
+// ---------------------------------------------------------------------------
+class KalmanFilter5
+{
+public:
+  static constexpr int N = 5;
+  // Named indices into the state vector.
+  enum Idx { X = 0, Y = 1, THETA = 2, V = 3, OMEGA = 4 };
+
+  std::array<double, N> x_{{0, 0, 0, 0, 0}};        // state mean
+  std::array<std::array<double, N>, N> P_{};        // state covariance
+
+  KalmanFilter5();
+
+  // Prediction (bicycle kinematic model). v_in / omega_in are the control
+  // inputs derived from the VESC (eRPM -> v, steering -> omega). q holds the
+  // per-state process-noise variances [Qx, Qy, Qtheta, Qv, Qomega].
+  void predict(double v_in, double omega_in, double dt, const std::array<double, N> & q);
+
+  // Scalar measurement update of a single state element `idx`.
+  //   z          : measured value
+  //   r          : measurement-noise variance for this element
+  //   is_angle   : wrap the innovation to [-pi, pi] (use for theta)
+  void updateScalar(int idx, double z, double r, bool is_angle);
+
+private:
+  static double wrapAngle(double a);
+};
 
 class VescToOdom : public rclcpp::Node
 {
@@ -65,20 +110,34 @@ private:
   double wheelbase_;
   bool publish_tf_;
 
-  // odometry state
-  double x_, y_, yaw_;
-  Float64::SharedPtr last_servo_cmd_;  ///< Last servo position commanded value
+  // IMU fusion parameters
+  std::string imu_topic_;
+  bool use_imu_yaw_rate_;
+  bool use_imu_orientation_;
+  std::array<double, KalmanFilter5::N> Q_;  // process-noise variances
+  double R_omega_, R_theta_;                // measurement-noise variances
+
+  // Kalman filter holding the fused state.
+  KalmanFilter5 kf_;
+  bool kf_initialized_;
+
+  Float64::SharedPtr last_servo_cmd_;       ///< Last servo position commanded value
   VescStateStamped::SharedPtr last_state_;  ///< Last received state message
 
-  // ROS services
+  // ROS interfaces
   rclcpp::Publisher<Odometry>::SharedPtr odom_pub_;
   rclcpp::Subscription<VescStateStamped>::SharedPtr vesc_state_sub_;
   rclcpp::Subscription<Float64>::SharedPtr servo_sub_;
+  rclcpp::Subscription<Imu>::SharedPtr imu_sub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_pub_;
 
   // ROS callbacks
-  void vescStateCallback(const VescStateStamped::SharedPtr state);
+  void vescStateCallback(const VescStateStamped::SharedPtr state);  // KF prediction
   void servoCmdCallback(const Float64::SharedPtr servo);
+  void imuCallback(const Imu::SharedPtr imu);                       // KF update
+
+  // Publish the current fused state as Odometry (+ optional TF).
+  void publishOdom(const rclcpp::Time & stamp);
 };
 
 }  // namespace vesc_ackermann

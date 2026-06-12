@@ -21,6 +21,7 @@ ament_auto_find_build_dependencies()
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/ackermann_to_vesc.cpp
   src/vesc_to_odom.cpp
+  src/vesc_to_odom_backup.cpp
 )
 
 # register nodes as components
@@ -31,6 +32,11 @@ rclcpp_components_register_node(${PROJECT_NAME}
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN vesc_ackermann::VescToOdom
   EXECUTABLE vesc_to_odom_node
+)
+# Unmodified backup of the original bicycle-model odometry node, kept as a fallback.
+rclcpp_components_register_node(${PROJECT_NAME}
+  PLUGIN vesc_ackermann::VescToOdomBackup
+  EXECUTABLE vesc_to_odom_node_backup
 )
 
 #############
