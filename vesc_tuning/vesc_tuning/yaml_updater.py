@@ -1,0 +1,103 @@
+"""Targeted, comment-preserving updater for the F1TENTH vesc.yaml.
+
+vesc.yaml stores its parameters under a `/**:` wildcard namespace, e.g.::
+
+    /**:
+      ros__parameters:
+        speed_to_erpm_gain: 4614.0
+        steering_angle_to_servo_gain: -1.2135
+
+PyYAML is used to *parse and validate* that the requested key exists (and under
+which namespace), but the actual write is a targeted single-line regex edit so
+that comments, ordering and untouched values are preserved (a full yaml.dump
+would strip every comment).
+"""
+
+import os
+import re
+
+import yaml
+
+
+def _format_value(value: float) -> str:
+    """Render a float compactly but unambiguously (always with a decimal point)."""
+    text = repr(float(value))
+    # repr keeps full precision; ensure it always looks like a float
+    if 'e' not in text and 'E' not in text and '.' not in text:
+        text += '.0'
+    return text
+
+
+def _key_present(data, param_name: str) -> bool:
+    """True if param_name exists under '/**'/ros__parameters or at the document root."""
+    if not isinstance(data, dict):
+        return False
+    wildcard = data.get('/**')
+    if isinstance(wildcard, dict):
+        ros_params = wildcard.get('ros__parameters')
+        if isinstance(ros_params, dict) and param_name in ros_params:
+            return True
+    # fallback: key directly at root (defensive)
+    return param_name in data
+
+
+def update_vesc_yaml(yaml_path: str, param_name: str, new_value: float) -> bool:
+    """Update a single scalar parameter in vesc.yaml in place.
+
+    Reads the YAML, confirms ``param_name`` exists under the ``/**`` wildcard
+    namespace (or at root level), updates its value preserving all other content
+    and comments, and writes the file back.
+
+    Returns True on success, False on failure. Prints a clear error message if
+    the file cannot be parsed or written.
+    """
+    if not yaml_path:
+        print('[yaml_updater] ERROR: no yaml_path provided.')
+        return False
+    if not os.path.isfile(yaml_path):
+        print(f'[yaml_updater] ERROR: file not found: {yaml_path}')
+        return False
+
+    # --- read + validate with PyYAML --------------------------------------
+    try:
+        with open(yaml_path, 'r') as f:
+            text = f.read()
+        data = yaml.safe_load(text)
+    except (OSError, yaml.YAMLError) as exc:
+        print(f'[yaml_updater] ERROR: cannot parse YAML "{yaml_path}": {exc}')
+        return False
+
+    if not _key_present(data, param_name):
+        print(f'[yaml_updater] ERROR: parameter "{param_name}" not found under '
+              f'"/**: ros__parameters" (or root) in {yaml_path}. File left unchanged.')
+        return False
+
+    # --- targeted line edit (preserves comments / layout) -----------------
+    # Match:  <indent><key><spaces>:<spaces><value><optional trailing comment/space>
+    pattern = re.compile(
+        r'^(?P<head>[ \t]*' + re.escape(param_name) + r'[ \t]*:[ \t]*)'
+        r'(?P<value>[^\s#]+)'
+        r'(?P<tail>[ \t]*(?:#.*)?)$',
+        re.MULTILINE,
+    )
+
+    new_scalar = _format_value(new_value)
+
+    def _repl(match: 're.Match') -> str:
+        return f"{match.group('head')}{new_scalar}{match.group('tail')}"
+
+    new_text, n_subs = pattern.subn(_repl, text, count=1)
+    if n_subs == 0:
+        print(f'[yaml_updater] ERROR: could not locate a scalar line for '
+              f'"{param_name}" to edit in {yaml_path}. File left unchanged.')
+        return False
+
+    try:
+        with open(yaml_path, 'w') as f:
+            f.write(new_text)
+    except OSError as exc:
+        print(f'[yaml_updater] ERROR: cannot write "{yaml_path}": {exc}')
+        return False
+
+    print(f'[yaml_updater] Set {param_name} = {new_scalar} in {yaml_path}')
+    return True
