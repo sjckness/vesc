@@ -30,7 +30,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64
 
-from vesc_tuning.yaml_updater import update_vesc_yaml
+from vesc_tuning.yaml_updater import read_vesc_param, update_vesc_yaml
 
 PUBLISH_RATE_HZ = 50.0
 GAIN_MIN_WARN = 0.1   # magnitude
@@ -61,6 +61,15 @@ class SteeringTuningNode(Node):
         self.speed_to_erpm_gain = float(self.declare_parameter('speed_to_erpm_gain', 4614.0).value)
         self.speed_to_erpm_offset = float(self.declare_parameter('speed_to_erpm_offset', 0.0).value)
 
+        # Seed the starting values from the *current* vesc.yaml so each tuning
+        # session continues from the last applied gains rather than fixed
+        # defaults. The declared parameters above act only as fallbacks. Note
+        # the yaml keys differ from the internal attribute names.
+        self._seed_from_yaml('steering_to_servo_gain', 'steering_angle_to_servo_gain')
+        self._seed_from_yaml('steering_to_servo_offset', 'steering_angle_to_servo_offset')
+        self._seed_from_yaml('speed_to_erpm_gain', 'speed_to_erpm_gain')
+        self._seed_from_yaml('speed_to_erpm_offset', 'speed_to_erpm_offset')
+
         # --- validate direction (error + exit if invalid) -----------------
         if self.direction not in ('left', 'right'):
             self.get_logger().fatal(
@@ -77,6 +86,19 @@ class SteeringTuningNode(Node):
         time.sleep(0.3)  # publisher discovery
         self.publish_stop()
         self.get_logger().info('steering_tuning_node up — stop command published.')
+
+    def _seed_from_yaml(self, attr: str, param_name: str):
+        """Override ``self.<attr>`` with the current value from vesc.yaml, if any."""
+        value = read_vesc_param(self.vesc_yaml_path, param_name)
+        if value is None:
+            return
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return
+        setattr(self, attr, value)
+        self.get_logger().info(
+            f'Starting {param_name} = {value} (from {self.vesc_yaml_path})')
 
     # ----- low-level publishing ------------------------------------------
     def _pub_speed(self, erpm: float):

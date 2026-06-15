@@ -20,6 +20,12 @@ autonomous stack (MPC) so nothing else fights for those topics.
 > parameter callbacks. After a gain is written to `vesc.yaml` you must **restart
 > the vesc nodes** for it to take effect.
 
+> ℹ️ The tuning nodes **seed their starting gain from the current `vesc.yaml`**
+> (when `vesc_yaml_path` is set), so each session continues from the last applied
+> value instead of a fixed default. The declared `*_gain` / `*_offset` parameters
+> are only fallbacks used when no yaml is available. The current value is logged
+> at startup (`Starting <param> = <value> (from <path>)`).
+
 ## Recommended tuning order
 
 1. **Speed gain first** (`speed_to_erpm_gain`). The steering test drives at a

@@ -41,6 +41,33 @@ def _key_present(data, param_name: str) -> bool:
     return param_name in data
 
 
+def read_vesc_param(yaml_path: str, param_name: str):
+    """Return the current value of ``param_name`` from vesc.yaml, or None.
+
+    Looks under the ``/**`` wildcard namespace (or document root, as a fallback).
+    Returns None if the file is missing/unparseable or the key is absent, so the
+    caller can fall back to its own default. Never raises.
+    """
+    if not yaml_path or not os.path.isfile(yaml_path):
+        return None
+    try:
+        with open(yaml_path, 'r') as f:
+            data = yaml.safe_load(f.read())
+    except (OSError, yaml.YAMLError) as exc:
+        print(f'[yaml_updater] WARN: cannot read "{yaml_path}": {exc}')
+        return None
+    if not isinstance(data, dict):
+        return None
+    wildcard = data.get('/**')
+    if isinstance(wildcard, dict):
+        ros_params = wildcard.get('ros__parameters')
+        if isinstance(ros_params, dict) and param_name in ros_params:
+            return ros_params[param_name]
+    if param_name in data:
+        return data[param_name]
+    return None
+
+
 def update_vesc_yaml(yaml_path: str, param_name: str, new_value: float) -> bool:
     """Update a single scalar parameter in vesc.yaml in place.
 
