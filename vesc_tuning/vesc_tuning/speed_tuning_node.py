@@ -32,10 +32,10 @@ class SpeedTuningNode(Node):
         super().__init__('speed_tuning_node')
 
         # --- parameters ---------------------------------------------------
-        self.target_distance = float(self.declare_parameter('target_distance', 1.0).value)
+        self.target_distance = float(self.declare_parameter('target_distance', 0.9).value)
         self.target_speed = float(self.declare_parameter('target_speed', 0.5).value)
         self.reverse = bool(self.declare_parameter('reverse', False).value)
-        self.speed_to_erpm_gain = float(self.declare_parameter('speed_to_erpm_gain', 4614.0).value)
+        self.speed_to_erpm_gain = float(self.declare_parameter('speed_to_erpm_gain', 5242.73).value)
         self.speed_to_erpm_offset = float(self.declare_parameter('speed_to_erpm_offset', 0.0).value)
         self.vesc_yaml_path = str(self.declare_parameter('vesc_yaml_path', '').value)
 
