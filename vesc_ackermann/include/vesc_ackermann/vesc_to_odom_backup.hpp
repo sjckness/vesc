@@ -68,6 +68,9 @@ private:
   double steering_to_servo_gain_, steering_to_servo_offset_;
   double wheelbase_;
   bool publish_tf_;
+  /** Symmetric deadband [ERPM] applied to raw state.speed before gain conversion, to
+   *  reject hall-sensor standstill noise (observed phantom 346-384 ERPM at true rest). */
+  double erpm_deadband_;
 
   // odometry state
   double x_, y_, yaw_;

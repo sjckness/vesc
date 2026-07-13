@@ -68,6 +68,11 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   // get vesc serial port address
   std::string port = declare_parameter<std::string>("port", "");
 
+  // measured static yaw-rate bias (rad/s), subtracted from the gyro z-axis reading
+  // before it's published on sensors/imu/raw -- see f1tenth_diagnostics'
+  // gyro_bias_calibration_node for how to (re-)measure it. 0.0 = no correction applied.
+  gyro_bias_z_ = declare_parameter<double>("gyro_bias_z", -0.020508);
+
   // attempt to connect to the serial port
   try {
     vesc_.connect(port);
@@ -237,7 +242,7 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
 
     std_imu_msg.angular_velocity.x = imuData->gyr_x();
     std_imu_msg.angular_velocity.y = imuData->gyr_y();
-    std_imu_msg.angular_velocity.z = imuData->gyr_z();
+    std_imu_msg.angular_velocity.z = imuData->gyr_z() - gyro_bias_z_;
 
     std_imu_msg.orientation.w = imuData->q_w();
     std_imu_msg.orientation.x = imuData->q_x();

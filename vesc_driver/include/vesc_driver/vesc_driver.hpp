@@ -117,6 +117,8 @@ private:
   driver_mode_t driver_mode_;           ///< driver state machine mode (state)
   int fw_version_major_;                ///< firmware major version reported by vesc
   int fw_version_minor_;                ///< firmware minor version reported by vesc
+  double gyro_bias_z_;                  ///< static yaw-rate bias (rad/s) subtracted from
+                                         ///< gyr_z() before publishing on sensors/imu/raw
 
   // ROS callbacks
   void brakeCallback(const Float64::SharedPtr brake);

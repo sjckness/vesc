@@ -65,6 +65,10 @@ VescToOdomBackup::VescToOdomBackup(const rclcpp::NodeOptions & options)
 
   speed_to_erpm_gain_ = declare_parameter<double>("speed_to_erpm_gain");
   speed_to_erpm_offset_ = declare_parameter<double>("speed_to_erpm_offset");
+  // Rejects hall-sensor standstill noise (phantom nonzero ERPM at true rest) before it
+  // ever reaches the gain conversion. Symmetric: phantom readings could plausibly be
+  // either sign depending on hall state, even though observed samples were positive.
+  erpm_deadband_ = declare_parameter<double>("erpm_deadband", 500.0);
 
   if (use_servo_cmd_) {
     steering_to_servo_gain_ =
@@ -101,8 +105,15 @@ void VescToOdomBackup::vescStateCallback(const VescStateStamped::SharedPtr state
     return;
   }
 
+  // reject phantom hall-sensor ERPM noise at standstill before it reaches the gain
+  // conversion below (see erpm_deadband_ declaration)
+  double raw_erpm = state->state.speed;
+  if (std::fabs(raw_erpm) < erpm_deadband_) {
+    raw_erpm = 0.0;
+  }
+
   // convert to engineering units
-  double current_speed = (-state->state.speed - speed_to_erpm_offset_) / speed_to_erpm_gain_;
+  double current_speed = (-raw_erpm - speed_to_erpm_offset_) / speed_to_erpm_gain_;
   if (std::fabs(current_speed) < 0.05) {
     current_speed = 0.0;
   }
