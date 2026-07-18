@@ -71,10 +71,20 @@ private:
   /** Symmetric deadband [ERPM] applied to raw state.speed before gain conversion, to
    *  reject hall-sensor standstill noise (observed phantom 346-384 ERPM at true rest). */
   double erpm_deadband_;
+  /** Message-level (Level 1) covariance calibration: measured stationary variance of
+   *  twist.twist.linear.x, applied to twist.covariance[0]. vy has no equivalent -- it's
+   *  a hardcoded 0.0 constant (Ackermann kinematics), not a measured quantity, so there
+   *  is no vy_variance. Default 0.0 = uncalibrated. See f1tenth_diagnostics'
+   *  sensor_covariance_calibration_node. */
+  double vx_variance_;
 
   // odometry state
   double x_, y_, yaw_;
-  Float64::SharedPtr last_servo_cmd_;  ///< Last servo position commanded value
+  /** Last servo position commanded value (/commands/servo/position). Null until the
+   *  first message arrives -- vescStateCallback treats null as steering angle 0.0
+   *  (straight-ahead) rather than deferring publication, so /odom starts flowing as
+   *  soon as sensors/core does, even before any drive command has ever been sent. */
+  Float64::SharedPtr last_servo_cmd_;
   VescStateStamped::SharedPtr last_state_;  ///< Last received state message
 
   // ROS services

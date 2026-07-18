@@ -70,6 +70,10 @@ VescToOdomBackup::VescToOdomBackup(const rclcpp::NodeOptions & options)
   // either sign depending on hall state, even though observed samples were positive.
   erpm_deadband_ = declare_parameter<double>("erpm_deadband", 500.0);
 
+  // Message-level covariance calibration (see vx_variance_ doc comment). 0.0 =
+  // uncalibrated -- do not invent a placeholder nonzero default.
+  vx_variance_ = declare_parameter<double>("vx_variance", 0.0);
+
   if (use_servo_cmd_) {
     steering_to_servo_gain_ =
       declare_parameter<double>("steering_angle_to_servo_gain");
@@ -93,18 +97,17 @@ VescToOdomBackup::VescToOdomBackup(const rclcpp::NodeOptions & options)
     "sensors/core", 10, std::bind(&VescToOdomBackup::vescStateCallback, this, _1));
 
   if (use_servo_cmd_) {
+    // Subscribe directly to the commanded topic (not vesc_driver_node's
+    // sensors/servo_position_command echo, which only fires once the driver is in
+    // MODE_OPERATING and has actually received a command) -- see vescStateCallback's
+    // last_servo_cmd_ handling for why /odom no longer waits on this.
     servo_sub_ = create_subscription<Float64>(
-      "sensors/servo_position_command", 10, std::bind(&VescToOdomBackup::servoCmdCallback, this, _1));
+      "commands/servo/position", 10, std::bind(&VescToOdomBackup::servoCmdCallback, this, _1));
   }
 }
 
 void VescToOdomBackup::vescStateCallback(const VescStateStamped::SharedPtr state)
 {
-  // check that we have a last servo command if we are depending on it for angular velocity
-  if (use_servo_cmd_ && !last_servo_cmd_) {
-    return;
-  }
-
   // reject phantom hall-sensor ERPM noise at standstill before it reaches the gain
   // conversion below (see erpm_deadband_ declaration)
   double raw_erpm = state->state.speed;
@@ -112,15 +115,22 @@ void VescToOdomBackup::vescStateCallback(const VescStateStamped::SharedPtr state
     raw_erpm = 0.0;
   }
 
-  // convert to engineering units
-  double current_speed = (-raw_erpm - speed_to_erpm_offset_) / speed_to_erpm_gain_;
+  // convert to engineering units. vesc.yaml: erpm = speed_to_erpm_gain * speed +
+  // speed_to_erpm_offset, so speed = (erpm - offset) / gain -- positive erpm (forward)
+  // must yield positive speed.
+  double current_speed = (raw_erpm - speed_to_erpm_offset_) / speed_to_erpm_gain_;
   if (std::fabs(current_speed) < 0.05) {
     current_speed = 0.0;
   }
   double current_steering_angle(0.0), current_angular_velocity(0.0);
   if (use_servo_cmd_) {
-    current_steering_angle =
-      (last_servo_cmd_->data - steering_to_servo_offset_) / steering_to_servo_gain_;
+    // Straight-ahead (0.0) until a real servo command arrives -- last_servo_cmd_ is
+    // null from construction until servoCmdCallback fires for the first time, no
+    // longer gates publishing (see vescStateCallback's removed early-return).
+    if (last_servo_cmd_) {
+      current_steering_angle =
+        (last_servo_cmd_->data - steering_to_servo_offset_) / steering_to_servo_gain_;
+    }
     current_angular_velocity = current_speed * tan(current_steering_angle) / wheelbase_;
   }
 
@@ -171,8 +181,10 @@ void VescToOdomBackup::vescStateCallback(const VescStateStamped::SharedPtr state
   odom.twist.twist.linear.y = 0.0;
   odom.twist.twist.angular.z = current_angular_velocity;
 
-  // Velocity uncertainty
-  /** @todo Think about velocity uncertainty */
+  // Velocity uncertainty: vx from message-level calibration (see vx_variance_ doc
+  // comment). vy has no equivalent -- linear.y above is a hardcoded 0.0 constant, not a
+  // measured quantity, so its variance is left at 0.0 (default, uncalibrated).
+  odom.twist.covariance[0] = vx_variance_;  ///< vx
 
   if (publish_tf_) {
     TransformStamped tf;

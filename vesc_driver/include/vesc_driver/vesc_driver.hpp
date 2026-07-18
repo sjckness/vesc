@@ -120,6 +120,17 @@ private:
   double gyro_bias_z_;                  ///< static yaw-rate bias (rad/s) subtracted from
                                          ///< gyr_z() before publishing on sensors/imu/raw
 
+  /** @name Message-level (Level 1) covariance calibration
+   *  Measured stationary variance, applied as the diagonal of
+   *  angular_velocity_covariance / linear_acceleration_covariance on
+   *  sensors/imu/raw. Off-diagonal terms are always 0.0 (a stationary test
+   *  doesn't estimate cross-axis correlation). Default 0.0 = uncalibrated.
+   *  See f1tenth_diagnostics' sensor_covariance_calibration_node. */
+  ///@{
+  double gyro_variance_x_, gyro_variance_y_, gyro_variance_z_;
+  double accel_variance_x_, accel_variance_y_, accel_variance_z_;
+  ///@}
+
   // ROS callbacks
   void brakeCallback(const Float64::SharedPtr brake);
   void currentCallback(const Float64::SharedPtr current);

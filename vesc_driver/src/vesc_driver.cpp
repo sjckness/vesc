@@ -73,6 +73,17 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   // gyro_bias_calibration_node for how to (re-)measure it. 0.0 = no correction applied.
   gyro_bias_z_ = declare_parameter<double>("gyro_bias_z", -0.020508);
 
+  // Message-level (Level 1) covariance calibration: measured stationary variance per
+  // axis, applied as the diagonal of angular_velocity_covariance / linear_acceleration_
+  // covariance on sensors/imu/raw. 0.0 = uncalibrated -- do not invent placeholder
+  // nonzero defaults. See f1tenth_diagnostics' sensor_covariance_calibration_node.
+  gyro_variance_x_ = declare_parameter<double>("gyro_variance_x", 0.0);
+  gyro_variance_y_ = declare_parameter<double>("gyro_variance_y", 0.0);
+  gyro_variance_z_ = declare_parameter<double>("gyro_variance_z", 0.0);
+  accel_variance_x_ = declare_parameter<double>("accel_variance_x", 0.0);
+  accel_variance_y_ = declare_parameter<double>("accel_variance_y", 0.0);
+  accel_variance_z_ = declare_parameter<double>("accel_variance_z", 0.0);
+
   // attempt to connect to the serial port
   try {
     vesc_.connect(port);
@@ -243,6 +254,18 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     std_imu_msg.angular_velocity.x = imuData->gyr_x();
     std_imu_msg.angular_velocity.y = imuData->gyr_y();
     std_imu_msg.angular_velocity.z = imuData->gyr_z() - gyro_bias_z_;
+
+    // Message-level covariance (see gyro_variance_*_/accel_variance_*_ doc comment).
+    // Off-diagonal terms stay 0.0 -- a stationary test doesn't estimate cross-axis
+    // correlation. orientation_covariance is left as-is (untouched by this task).
+    std_imu_msg.angular_velocity_covariance = {
+      gyro_variance_x_, 0.0, 0.0,
+      0.0, gyro_variance_y_, 0.0,
+      0.0, 0.0, gyro_variance_z_};
+    std_imu_msg.linear_acceleration_covariance = {
+      accel_variance_x_, 0.0, 0.0,
+      0.0, accel_variance_y_, 0.0,
+      0.0, 0.0, accel_variance_z_};
 
     std_imu_msg.orientation.w = imuData->q_w();
     std_imu_msg.orientation.x = imuData->q_x();
