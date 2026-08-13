@@ -28,9 +28,16 @@
 
 // -*- mode:c++; fill-column: 100; -*-
 
-// NOTE: Unmodified backup of the original bicycle-model odometry node.
-// Built as the executable `vesc_to_odom_node_backup` (fallback). Logic identical
-// to the original; only the class/node names are changed so it can coexist.
+// NOTE: Originally an unmodified backup of the reference bicycle-model odometry
+// node (built as the executable `vesc_to_odom_node_backup`, coexisting with the
+// fused node via the renamed class/node). No longer byte-identical to that
+// reference: the ERPM->speed sign was corrected (the original negated
+// state.speed before the gain conversion, which was wrong for this car's ERPM
+// polarity -- see vescStateCallback's own comment), an erpm_deadband_ was added
+// to reject standstill hall-sensor noise, vx_variance_ was added for message-
+// level covariance calibration, and publishing no longer waits on a first servo
+// command. Kept as its own file/executable regardless, alongside the fused node
+// it was split from.
 #include "vesc_ackermann/vesc_to_odom_backup.hpp"
 
 #include <cmath>
@@ -73,6 +80,12 @@ VescToOdomBackup::VescToOdomBackup(const rclcpp::NodeOptions & options)
   // Message-level covariance calibration (see vx_variance_ doc comment). 0.0 =
   // uncalibrated -- do not invent a placeholder nonzero default.
   vx_variance_ = declare_parameter<double>("vx_variance", 0.0);
+
+  // pose.covariance[0]/[7]/[35] (see x_variance_/y_variance_/yaw_variance_ doc
+  // comment in the header). Defaults reproduce the old hardcoded literals exactly.
+  x_variance_ = declare_parameter<double>("x_variance", 0.2);
+  y_variance_ = declare_parameter<double>("y_variance", 0.2);
+  yaw_variance_ = declare_parameter<double>("yaw_variance", 0.4);
 
   if (use_servo_cmd_) {
     steering_to_servo_gain_ =
@@ -170,11 +183,10 @@ void VescToOdomBackup::vescStateCallback(const VescStateStamped::SharedPtr state
   odom.pose.pose.orientation.z = sin(yaw_ / 2.0);
   odom.pose.pose.orientation.w = cos(yaw_ / 2.0);
 
-  // Position uncertainty
-  /** @todo Think about position uncertainty, perhaps get from parameters? */
-  odom.pose.covariance[0] = 0.2;   ///< x
-  odom.pose.covariance[7] = 0.2;   ///< y
-  odom.pose.covariance[35] = 0.4;  ///< yaw
+  // Position uncertainty -- see x_variance_/y_variance_/yaw_variance_ doc comment.
+  odom.pose.covariance[0] = x_variance_;     ///< x
+  odom.pose.covariance[7] = y_variance_;     ///< y
+  odom.pose.covariance[35] = yaw_variance_;  ///< yaw
 
   // Velocity ("in the coordinate frame given by the child_frame_id")
   odom.twist.twist.linear.x = current_speed;

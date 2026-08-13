@@ -28,10 +28,13 @@
 
 // -*- mode:c++; fill-column: 100; -*-
 
-// NOTE: This is an unmodified backup copy of the original bicycle-model
-// vesc_to_odom node, preserved as the executable `vesc_to_odom_node_backup`.
-// The class and node name are renamed (VescToOdomBackup / vesc_to_odom_node_backup)
-// only so it can coexist with the new fused node; the odometry logic is identical.
+// NOTE: Originally an unmodified backup copy of the reference bicycle-model
+// vesc_to_odom node, preserved as the executable `vesc_to_odom_node_backup`
+// (class/node renamed to VescToOdomBackup / vesc_to_odom_node_backup only so it
+// could coexist with the new fused node). No longer identical to that
+// reference -- see vesc_to_odom_backup.cpp's own header for what changed
+// (ERPM sign fix, erpm_deadband_, vx_variance_, no longer waiting on a first
+// servo command) and why.
 #ifndef VESC_ACKERMANN__VESC_TO_ODOM_BACKUP_HPP_
 #define VESC_ACKERMANN__VESC_TO_ODOM_BACKUP_HPP_
 
@@ -77,6 +80,19 @@ private:
    *  is no vy_variance. Default 0.0 = uncalibrated. See f1tenth_diagnostics'
    *  sensor_covariance_calibration_node. */
   double vx_variance_;
+  /** pose.covariance[0]/[7]/[35] (x/y/yaw), applied to every published /odom message.
+   *  Previously hardcoded literals (0.2, 0.2, 0.4) with a "get from parameters?" TODO --
+   *  now parameterized so f1tenth_bringup/config/vesc.yaml is the single source of
+   *  truth. yaw_variance_ in particular is what the EKF (f1tenth_bringup/config/
+   *  ekf.yaml, odom0) weighs against imu0's gyro-rate measurement to correct yaw: the
+   *  old 0.4 (~36 deg stddev) told the EKF this bicycle-model yaw was nearly worthless,
+   *  so between odom0 updates the fused yaw evolved almost entirely off imu0's
+   *  gyro-rate integration -- any residual gyro bias left after gyro_bias_z's static
+   *  correction then accumulated essentially unchecked (observed as EKF yaw/position
+   *  drifting far more than raw /odom once localization_source:='ekf' actually got
+   *  wired up -- see f1tenth_params' get_odom_topic()). Defaults below match the old
+   *  hardcoded values exactly (no behavior change from just building this). */
+  double x_variance_, y_variance_, yaw_variance_;
 
   // odometry state
   double x_, y_, yaw_;
