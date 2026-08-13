@@ -91,6 +91,17 @@ private:
   CommandLimit position_limit_;
   CommandLimit servo_limit_;
 
+  // Known noise floor on this hardware: state.speed (raw ERPM telemetry) sits
+  // around 380-400 ERPM even at true rest (empirically observed via live
+  // /sensors/core echo -- no net wheel motion, but real current draw and a
+  // steady non-zero rpm() reading). Zeroed in vescPacketCallback() below
+  // rather than left for every downstream consumer to filter independently --
+  // vesc_to_odom_node_backup's own 0.05 m/s deadband is too tight to catch
+  // this (~400 erpm / speed_to_erpm_gain is well above it), and filtering
+  // once here means any other current or future consumer of /sensors/core
+  // gets the same clean signal instead of needing its own copy of this fix.
+  double erpm_deadband_;
+
   // ROS services
   rclcpp::Publisher<VescStateStamped>::SharedPtr state_pub_;
   rclcpp::Publisher<VescImuStamped>::SharedPtr imu_pub_;

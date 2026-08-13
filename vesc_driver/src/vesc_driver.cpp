@@ -93,6 +93,12 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
     return;
   }
 
+  // Known ~380-400 ERPM noise floor at rest on this hardware -- see the
+  // member's own comment in vesc_driver.hpp. 500.0 default gives margin above
+  // the observed floor without being so wide it would eat genuine low-speed
+  // motion (500 erpm / speed_to_erpm_gain, ~5500, is under 0.1 m/s).
+  erpm_deadband_ = declare_parameter<double>("erpm_deadband", 500.0);
+
   // create vesc state (telemetry) publisher
   state_pub_ = create_publisher<VescStateStamped>("sensors/core", rclcpp::QoS{10});
   imu_pub_ = create_publisher<VescImuStamped>("sensors/imu", rclcpp::QoS{10});
@@ -185,7 +191,10 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     state_msg.state.avg_id = values->avg_id();
     state_msg.state.avg_iq = values->avg_iq();
     state_msg.state.duty_cycle = values->duty_cycle_now();
-    state_msg.state.speed = values->rpm();
+    // Deadbanded, not raw rpm() -- see erpm_deadband_'s own comment
+    // (vesc_driver.hpp) for why this exists and how the default was picked.
+    double raw_rpm = values->rpm();
+    state_msg.state.speed = (std::fabs(raw_rpm) < erpm_deadband_) ? 0.0 : raw_rpm;
 
     state_msg.state.charge_drawn = values->amp_hours();
     state_msg.state.charge_regen = values->amp_hours_charged();
