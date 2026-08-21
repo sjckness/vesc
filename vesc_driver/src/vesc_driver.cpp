@@ -73,6 +73,24 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   // gyro_bias_calibration_node for how to (re-)measure it. 0.0 = no correction applied.
   gyro_bias_z_ = declare_parameter<double>("gyro_bias_z", -0.020508);
 
+  // Final gain applied AFTER bias subtraction (bias in raw units, scale as the
+  // last step -- preserves the existing gyro_bias_z_ structure/semantics
+  // unchanged rather than folding the two together). 1.0 default = no-op, so
+  // any params file without these keys behaves exactly as before this pass.
+  // gyro_scale_z empirically measured live via a 180deg reference-rotation
+  // test (see that investigation's own report) -- landed within 0.1% of
+  // pi/180 (57.2958x), matching gyr_z()'s own "// deg/s" comment (vesc_
+  // packet.cpp) against this field's rad/s contract: raw gyro is suspected to
+  // genuinely be in deg/s, unconverted, unlike roll()/pitch()/yaw() on the
+  // same packet (which DO convert -- see that file's own comment). Not
+  // confirmed as the root mechanism yet, hence a config-level correction
+  // here rather than fixing the conversion at its actual source once found.
+  // gyro_scale_x/y default to 1.0 (untouched) -- same-source suspicion only,
+  // not yet measured for these axes.
+  gyro_scale_x_ = declare_parameter<double>("gyro_scale_x", 1.0);
+  gyro_scale_y_ = declare_parameter<double>("gyro_scale_y", 1.0);
+  gyro_scale_z_ = declare_parameter<double>("gyro_scale_z", 1.0);
+
   // Message-level (Level 1) covariance calibration: measured stationary variance per
   // axis, applied as the diagonal of angular_velocity_covariance / linear_acceleration_
   // covariance on sensors/imu/raw. 0.0 = uncalibrated -- do not invent placeholder
@@ -260,9 +278,9 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     std_imu_msg.linear_acceleration.y = imuData->acc_y();
     std_imu_msg.linear_acceleration.z = imuData->acc_z();
 
-    std_imu_msg.angular_velocity.x = imuData->gyr_x();
-    std_imu_msg.angular_velocity.y = imuData->gyr_y();
-    std_imu_msg.angular_velocity.z = imuData->gyr_z() - gyro_bias_z_;
+    std_imu_msg.angular_velocity.x = imuData->gyr_x() * gyro_scale_x_;
+    std_imu_msg.angular_velocity.y = imuData->gyr_y() * gyro_scale_y_;
+    std_imu_msg.angular_velocity.z = (imuData->gyr_z() - gyro_bias_z_) * gyro_scale_z_;
 
     // Message-level covariance (see gyro_variance_*_/accel_variance_*_ doc comment).
     // Off-diagonal terms stay 0.0 -- a stationary test doesn't estimate cross-axis

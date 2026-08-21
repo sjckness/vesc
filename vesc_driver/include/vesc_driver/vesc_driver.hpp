@@ -130,6 +130,21 @@ private:
   int fw_version_minor_;                ///< firmware minor version reported by vesc
   double gyro_bias_z_;                  ///< static yaw-rate bias (rad/s) subtracted from
                                          ///< gyr_z() before publishing on sensors/imu/raw
+  double gyro_scale_x_;                 ///< final gain applied to gyr_x() after bias
+                                         ///< subtraction (no bias term exists for x/y
+                                         ///< today -- see gyro_bias_z_ above) -- 1.0 =
+                                         ///< no-op, placeholder pending same-source
+                                         ///< suspicion confirmation for this axis
+  double gyro_scale_y_;                 ///< see gyro_scale_x_ -- same, y axis
+  double gyro_scale_z_;                 ///< final gain applied to (gyr_z() - gyro_bias_z_)
+                                         ///< -- empirically measured live (180deg
+                                         ///< reference-rotation test, see that
+                                         ///< investigation's own report) to correct a
+                                         ///< suspected raw-units mismatch (gyr_z()'s own
+                                         ///< "deg/s" comment vs. this field's rad/s
+                                         ///< contract) -- 1.0 = no-op if the param is
+                                         ///< missing, so existing configs without this
+                                         ///< key keep working unchanged
 
   /** @name Message-level (Level 1) covariance calibration
    *  Measured stationary variance, applied as the diagonal of
