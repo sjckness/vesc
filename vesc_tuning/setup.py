@@ -22,7 +22,6 @@ setup(
     maintainer_email='andreas21steffens@gmail.com',
     description='Human-in-the-loop empirical VESC gain calibration nodes for F1TENTH.',
     license='BSD',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'speed_tuning_node = vesc_tuning.speed_tuning_node:main',
