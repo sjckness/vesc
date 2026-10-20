@@ -39,6 +39,7 @@
 // command. Kept as its own file/executable regardless, alongside the fused node
 // it was split from.
 #include "vesc_ackermann/vesc_to_odom_backup.hpp"
+#include "vesc_ackermann/odom_speed.hpp"
 
 #include <cmath>
 #include <string>
@@ -72,9 +73,11 @@ VescToOdomBackup::VescToOdomBackup(const rclcpp::NodeOptions & options)
 
   speed_to_erpm_gain_ = declare_parameter<double>("speed_to_erpm_gain");
   speed_to_erpm_offset_ = declare_parameter<double>("speed_to_erpm_offset");
-  // Rejects hall-sensor standstill noise (phantom nonzero ERPM at true rest) before it
-  // ever reaches the gain conversion. Symmetric: phantom readings could plausibly be
-  // either sign depending on hall state, even though observed samples were positive.
+  // UNUSED by this node since the gates were removed (see vescStateCallback and
+  // odom_speed.hpp): vesc_driver applies the deadband to state.speed before it is
+  // published, so /sensors/core is already clean at standstill. Still declared
+  // because vesc.yaml sets erpm_deadband under the '/**' wildcard, i.e. for every
+  // vesc node, and the key should keep resolving here rather than look like a typo.
   erpm_deadband_ = declare_parameter<double>("erpm_deadband", 500.0);
 
   // Message-level covariance calibration (see vx_variance_ doc comment). 0.0 =
@@ -121,20 +124,14 @@ VescToOdomBackup::VescToOdomBackup(const rclcpp::NodeOptions & options)
 
 void VescToOdomBackup::vescStateCallback(const VescStateStamped::SharedPtr state)
 {
-  // reject phantom hall-sensor ERPM noise at standstill before it reaches the gain
-  // conversion below (see erpm_deadband_ declaration)
-  double raw_erpm = state->state.speed;
-  if (std::fabs(raw_erpm) < erpm_deadband_) {
-    raw_erpm = 0.0;
-  }
-
-  // convert to engineering units. vesc.yaml: erpm = speed_to_erpm_gain * speed +
-  // speed_to_erpm_offset, so speed = (erpm - offset) / gain -- positive erpm (forward)
-  // must yield positive speed.
-  double current_speed = (raw_erpm - speed_to_erpm_offset_) / speed_to_erpm_gain_;
-  if (std::fabs(current_speed) < 0.05) {
-    current_speed = 0.0;
-  }
+  // Convert to engineering units, sign and all (odom_speed.hpp). No deadband is
+  // applied here: vesc_driver already zeroed |rpm| < erpm_deadband on state.speed
+  // before publishing it. This node used to repeat that 500 ERPM gate and then
+  // apply a second one at 0.05 m/s; both were unreachable (0.05 m/s is 226 ERPM,
+  // inside the 500 the driver had already removed) and only widened the dead zone
+  // in both directions on paper. A reverse must survive to /odom.
+  const double current_speed = erpmToSpeed(
+    state->state.speed, speed_to_erpm_offset_, speed_to_erpm_gain_);
   double current_steering_angle(0.0), current_angular_velocity(0.0);
   if (use_servo_cmd_) {
     // Straight-ahead (0.0) until a real servo command arrives -- last_servo_cmd_ is

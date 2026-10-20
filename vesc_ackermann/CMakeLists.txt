@@ -50,6 +50,8 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_velocity_correction test/test_velocity_correction.cpp)
   target_include_directories(test_velocity_correction PRIVATE include)
+  ament_add_gtest(test_odom_speed test/test_odom_speed.cpp)
+  target_include_directories(test_odom_speed PRIVATE include)
 endif()
 
 ament_auto_package(
